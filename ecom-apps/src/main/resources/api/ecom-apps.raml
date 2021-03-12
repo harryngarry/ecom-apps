@@ -1,0 +1,17 @@
+#%RAML 1.0
+title: ecom-apps
+baseUri: http:localhost:8081/api
+
+/getUserById:
+  /{userId}:
+    get:
+      responses:
+        200:
+          body:
+            application/json:
+              description: string
+              example:
+                description: Success
+    
+      
+    

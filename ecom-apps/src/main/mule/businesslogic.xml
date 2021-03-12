@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd 
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd 
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="39c85630-c555-45f7-8b41-8e239e00b582" >
+		<http:request-connection protocol="HTTPS" host="jsonplaceholder.typicode.com" />
+	</http:request-config>
+	<os:object-store name="Object_store" doc:name="Object store" doc:id="95f57dd0-6193-4d18-b3e5-8ef4e7d44779" maxEntries="20" entryTtlUnit="MINUTES" />
+	<validation:config name="Validation_Config" doc:name="Validation Config" doc:id="0a2501b8-22a1-437d-a32a-27d5c1ca0674" />
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="7d5241cc-b5e0-41f0-81fe-1befccd34183" >
+		<db:my-sql-connection host="mysql-22925-0.cloudclusters.net" port="22925" user="gsharma" password="Java@1234" database="cars" />
+	</db:config>
+	<configuration-properties doc:name="Configuration properties" doc:id="0e6bf6e9-84ad-4dd1-98d6-4e6cdd1f440b" file="properties\cars-prod.yaml" />
+	<global-property doc:name="Global Property" doc:id="7dd08914-6cc2-4fae-a4c6-da7ee45a7665" name="cars-env" value="prod" />
+	<flow name="API-Consume-Cache-flow" doc:id="caa6a571-0cba-406d-a080-066aa89ab0a5" >
+		<validation:is-not-blank-string doc:name="Is not blank string" doc:id="04c6fc09-83d2-4800-adc6-b8cbce2b1c65" config-ref="Validation_Config" value="#[attributes.uriParams.userId]" message="#['userId cannot be blank']"/>
+		<validation:matches-regex doc:name="Matches regex" doc:id="9e3fba22-82cb-4495-93f7-223db62e3436" config-ref="Validation_Config" regex="^[0-9]+$" value="#[attributes.uriParams.userId]" message="#[attributes.uriParams.userId ++ ' is not a valid number']"/>
+		<set-variable value="#[attributes.uriParams.userId]" doc:name="uriParamVar" doc:id="653661be-7a5d-47f5-a809-4c33bfc6322a" variableName="userId" />
+		<os:retrieve doc:name="Retrieve" doc:id="e7004baa-6560-45d4-aeef-17e4458e2c7f" key="#['userIdKey' ++ vars.userId]" objectStore="Object_store" >
+			<os:default-value ><![CDATA[#['not found']]]></os:default-value>
+		</os:retrieve>
+		<set-variable value="#[payload]" doc:name="key-value-var" doc:id="b9b5e1d3-8f1d-41dc-8830-5489deb7fc3e" variableName="userObject"/>
+		<choice doc:name="Choice" doc:id="ed041c0f-93af-45ea-9e7f-14df50aa2c2f" >
+			<when expression="#[vars.userObject != 'not found']">
+				<os:retrieve doc:name="Retrieve" doc:id="a5a9cc37-ef2a-4e4d-a279-1bb258a5c264" key="#['userIdKey' ++ vars.userId]" objectStore="Object_store">
+					<os:default-value ><![CDATA[#['not found']]]></os:default-value>
+				</os:retrieve>
+				<logger level="INFO" doc:name="Logger" doc:id="1a28712d-e3f7-4bbc-afcd-8bc962f2cf66" message="getting data from cache"/>
+			</when>
+			<otherwise >
+				<http:request method="GET" doc:name="Request" doc:id="8a87b407-b94a-4ca0-a9b5-470e1e05da79" config-ref="HTTP_Request_configuration" path='#["/users/" ++ vars.userId]' />
+				<os:store doc:name="Store" doc:id="df3bb178-a2ee-4e62-a1d9-0e14c40540ef" key="#['userIdKey' ++ vars.userId]" objectStore="Object_store">
+		</os:store>
+				<logger level="INFO" doc:name="Logger" doc:id="5b08565e-b03c-48fc-882c-7e2e7b8eb50d" message="getting data from jsonholder API"/>
+			
+</otherwise>
+		</choice>
+		<ee:transform doc:name="Transform Message" doc:id="e043d342-d9a8-4ae7-bd9a-fb4e4fcebb50" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<error-handler>
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="f1292501-e47a-40aa-bbc1-2098859e0a2d" type="ANY">
+				<ee:transform doc:name="Transform Message" doc:id="dbf6472b-40f3-4f02-bbaf-79a988012e0d">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	errorType: error.errorType,
+	errorDesc: error.description,
+	errorDetail: error.detailedDescription
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+</mule>
